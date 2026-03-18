@@ -65,9 +65,28 @@ const INFRA_MENU_ITEMS = [
   { id: "ai-incident-agent", label: "AI Incident Agent" },
 ];
 
+const DEFAULT_MENU_ID = "network-monitoring";
+const VALID_MENU_IDS = new Set(INFRA_MENU_ITEMS.map((item) => item.id));
+
+function parseMenuRoute(pathname) {
+  const normalizedPath = pathname.replace(/^\/+|\/+$/g, "");
+  if (!normalizedPath) {
+    return { menuId: DEFAULT_MENU_ID, isTopicPath: true, isValidTopicPath: true };
+  }
+  if (VALID_MENU_IDS.has(normalizedPath)) {
+    return { menuId: normalizedPath, isTopicPath: true, isValidTopicPath: true };
+  }
+  return { menuId: DEFAULT_MENU_ID, isTopicPath: false, isValidTopicPath: false };
+}
+
+function menuPath(menuId) {
+  return `/${menuId}`;
+}
+
 export default function App() {
-  const [activeMenu, setActiveMenu] = useState("network-monitoring");
-  const [infraExpanded, setInfraExpanded] = useState(false);
+  const initialRoute = parseMenuRoute(window.location.pathname);
+  const [activeMenu, setActiveMenu] = useState(initialRoute.menuId);
+  const [infraExpanded, setInfraExpanded] = useState(initialRoute.isTopicPath);
   const [data, setData] = useState(null);
   const [history, setHistory] = useState([]);
   const [throughputHistory, setThroughputHistory] = useState([]);
@@ -83,6 +102,19 @@ export default function App() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
   const previousInterfaceSnapshotRef = useRef(null);
+
+  const navigateToMenu = (menuId, options = {}) => {
+    if (!VALID_MENU_IDS.has(menuId)) return;
+    const method = options.replace ? "replaceState" : "pushState";
+    const nextPath = menuPath(menuId);
+
+    setActiveMenu(menuId);
+    setInfraExpanded(true);
+
+    if (window.location.pathname !== nextPath) {
+      window.history[method]({}, "", nextPath);
+    }
+  };
 
   async function loadData() {
     setLoading(true);
@@ -151,6 +183,25 @@ export default function App() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    const isRootPath = window.location.pathname === "/";
+    const route = parseMenuRoute(window.location.pathname);
+    if (isRootPath || !route.isValidTopicPath) {
+      window.history.replaceState({}, "", menuPath(route.menuId));
+      setActiveMenu(route.menuId);
+      setInfraExpanded(true);
+    }
+
+    const handlePopState = () => {
+      const nextRoute = parseMenuRoute(window.location.pathname);
+      setActiveMenu(nextRoute.menuId);
+      setInfraExpanded(nextRoute.isTopicPath);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -331,7 +382,7 @@ export default function App() {
                 key={item.id}
                 type="button"
                 className={`menu-item ${activeMenu === item.id ? "active" : ""}`}
-                onClick={() => setActiveMenu(item.id)}
+                onClick={() => navigateToMenu(item.id)}
               >
                 {item.label}
               </button>
