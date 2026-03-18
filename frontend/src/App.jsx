@@ -269,6 +269,26 @@ export default function App() {
   const historyRx = throughputHistory.map((item) => ({ label: item.label, value: item.rx }));
   const historyTx = throughputHistory.map((item) => ({ label: item.label, value: item.tx }));
 
+  const remotePorts = useMemo(() => {
+    const remotePortSet = new Set([22, 3389, 5900, 5901, 443, 8443]);
+    return (data?.running_ports?.items || []).filter((item) => remotePortSet.has(Number(item.port)));
+  }, [data]);
+
+  const databaseServices = useMemo(() => {
+    const dbTokens = ["postgres", "mysql", "redis", "mongo", "mariadb", "oracle", "etcd"];
+    return (data?.services?.critical || []).filter((item) => dbTokens.some((token) => item.service?.toLowerCase().includes(token)));
+  }, [data]);
+
+  const databaseProcesses = useMemo(() => {
+    const dbTokens = ["postgres", "mysql", "redis", "mongod", "mariadb", "oracle", "sql"];
+    return (data?.top_memory_processes?.items || []).filter((item) => dbTokens.some((token) => item.name?.toLowerCase().includes(token)));
+  }, [data]);
+
+  const storageAlerts = useMemo(
+    () => activeAlerts.filter((item) => /disk|datastore|storage/i.test(item)),
+    [activeAlerts]
+  );
+
   const handleThresholdChange = (key, value) => {
     setThresholds((prev) => ({ ...prev, [key]: Number(value) }));
   };
@@ -713,6 +733,458 @@ export default function App() {
               )}
             </article>
           </section>
+        </>
+      ) : activeMenu === "server-monitoring" ? (
+        <>
+          <section className="hero">
+            <div>
+              <h1><span className="k-brand">K</span> - Server Monitoring</h1>
+              <p>Service health, process load, and server exposure visibility.</p>
+            </div>
+            <div className="hero-actions">
+              <StatusBadge healthy={data?.overall_status?.healthy} label={data?.overall_status?.status || "Loading"} />
+              <button onClick={loadData} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
+            </div>
+          </section>
+
+          {data ? (
+            <>
+              <section className="grid-cards">
+                <div className="card-with-icon"><span className="card-icon"><Cpu size={18} /></span><StatCard title="CPU Usage" value={`${data.system_info.cpu.usage_percent}%`} subtitle={`Load ${data.system_info.cpu.load_avg?.join(" / ") || "N/A"}`} healthy={data.system_info.cpu.usage_percent < thresholds.cpu} /></div>
+                <div className="card-with-icon"><span className="card-icon"><MemoryStick size={18} /></span><StatCard title="RAM Usage" value={`${data.system_info.memory.percent}%`} subtitle={`${data.system_info.memory.used_gb} GB / ${data.system_info.memory.total_gb} GB`} healthy={data.system_info.memory.percent < thresholds.memory} /></div>
+                <div className="card-with-icon"><span className="card-icon"><Server size={18} /></span><StatCard title="Critical Services" value={`${data.services?.summary?.active ?? 0} active`} subtitle={`${data.services?.summary?.failed ?? 0} failed`} healthy={(data.services?.summary?.failed ?? 0) === 0} /></div>
+              </section>
+
+              <section className="panel two-col">
+                <article>
+                  <h2>Servers Running ({data.running_servers?.count || 0})</h2>
+                  <DataTable
+                    columns={[
+                      { key: "name", label: "Server Process" },
+                      { key: "pid", label: "PID" },
+                      { key: "port_count", label: "Ports" },
+                      { key: "ports_joined", label: "Port List" },
+                    ]}
+                    rows={(data.running_servers?.items || []).map((item) => ({
+                      ...item,
+                      ports_joined: (item.ports || []).join(", "),
+                    }))}
+                    emptyText="No server processes with listening ports found."
+                  />
+                </article>
+                <article>
+                  <h2>Critical Services</h2>
+                  <DataTable
+                    columns={[
+                      { key: "service", label: "Service" },
+                      { key: "unit", label: "Unit" },
+                      { key: "active", label: "Active" },
+                      { key: "sub", label: "Sub" },
+                      { key: "health", label: "Healthy" },
+                    ]}
+                    rows={(data.services?.critical || []).map((item) => ({ ...item, health: item.healthy ? "Yes" : "No" }))}
+                    emptyText="No tracked critical services found on this host."
+                  />
+                </article>
+              </section>
+
+              <section className="panel">
+                <h2>Top Processes by Memory ({data.top_memory_processes.count})</h2>
+                <DataTable
+                  columns={[
+                    { key: "pid", label: "PID" },
+                    { key: "name", label: "Process" },
+                    { key: "username", label: "User" },
+                    { key: "memory_rss_gb", label: "Memory (GB)" },
+                    { key: "memory_percent", label: "Memory %" },
+                    { key: "cpu_percent", label: "CPU %" },
+                  ]}
+                  rows={data.top_memory_processes.items}
+                  emptyText="No process data available."
+                />
+              </section>
+            </>
+          ) : null}
+        </>
+      ) : activeMenu === "remote-monitoring" ? (
+        <>
+          <section className="hero">
+            <div>
+              <h1><span className="k-brand">K</span> - Remote Monitoring</h1>
+              <p>Reachability, remote access paths, and external dependency health.</p>
+            </div>
+            <div className="hero-actions">
+              <StatusBadge healthy={data?.internet_connectivity?.connected} label={data?.internet_connectivity?.connected ? "Internet Up" : "Internet Down"} />
+              <button onClick={loadData} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
+            </div>
+          </section>
+
+          {data ? (
+            <>
+              <section className="panel two-col">
+                <article>
+                  <h2>Remote Reachability</h2>
+                  <ul className="meta-list">
+                    <li><b>Internet:</b> {data.internet_connectivity.connected ? "Connected" : "Disconnected"}</li>
+                    <li><b>Latency:</b> {data.internet_connectivity.latency_ms ? `${data.internet_connectivity.latency_ms} ms` : "N/A"}</li>
+                    <li><b>DNS Healthy:</b> {data.dns.healthy ? "Yes" : "No"}</li>
+                    <li><b>TLS Reachable:</b> {data.tls_certificates?.summary?.reachable ?? 0} / {data.tls_certificates?.summary?.count ?? 0}</li>
+                  </ul>
+                  <div className="dns-list">
+                    {data.dns.results.map((item) => (
+                      <div key={item.domain} className="dns-item">
+                        <div>
+                          <strong>{item.domain}</strong>
+                          <p>{item.resolved ? `Resolved in ${item.latency_ms} ms` : "Failed to resolve"}</p>
+                        </div>
+                        <StatusBadge healthy={item.resolved} label={item.resolved ? "Resolved" : "Failed"} />
+                      </div>
+                    ))}
+                  </div>
+                </article>
+                <article>
+                  <h2>Remote Access Surface ({remotePorts.length})</h2>
+                  <DataTable
+                    columns={[
+                      { key: "ip", label: "Bind IP" },
+                      { key: "port", label: "Port" },
+                      { key: "pid", label: "PID" },
+                      { key: "process_name", label: "Process" },
+                    ]}
+                    rows={remotePorts}
+                    emptyText="No common remote-access ports currently listening."
+                  />
+                </article>
+              </section>
+
+              <section className="latency-grid">
+                <LatencyResourceTable title="HTTP Endpoint Latency" rows={data.resource_latency.http || []} />
+                <LatencyResourceTable title="HTTPS Endpoint Latency" rows={data.resource_latency.https || []} />
+                <LatencyResourceTable title="ICMP Endpoint Latency" rows={data.resource_latency.icmp || []} />
+              </section>
+            </>
+          ) : null}
+        </>
+      ) : activeMenu === "vm-monitoring" ? (
+        <>
+          <section className="hero">
+            <div>
+              <h1><span className="k-brand">K</span> - VM Monitoring</h1>
+              <p>Virtualization inventory and orchestration runtime posture.</p>
+            </div>
+            <div className="hero-actions">
+              <StatusBadge healthy={data?.virtualization?.host_role !== "unknown"} label={data?.virtualization?.host_role || "Unknown"} />
+              <button onClick={loadData} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
+            </div>
+          </section>
+
+          {data ? (
+            <>
+              <section className="panel two-col">
+                <article>
+                  <h2>Virtualization Host</h2>
+                  <ul className="meta-list">
+                    <li><b>Host Role:</b> {data.virtualization?.host_role || "N/A"}</li>
+                    <li><b>Virtualization Type:</b> {data.virtualization?.virt_type || "N/A"}</li>
+                    <li><b>VM Processes:</b> {data.virtualization?.running_vm_process_count ?? 0}</li>
+                  </ul>
+                  <DataTable
+                    columns={[
+                      { key: "pid", label: "PID" },
+                      { key: "name", label: "Process" },
+                      { key: "memory_percent", label: "Memory %" },
+                    ]}
+                    rows={data.virtualization?.top_vm_processes || []}
+                    emptyText="No virtualization processes detected."
+                  />
+                </article>
+                <article>
+                  <h2>Kubernetes Runtime</h2>
+                  <div className="kube-summary">
+                    <StatusBadge healthy={data.kubernetes?.installed} label={data.kubernetes?.installed ? "kubectl Installed" : "kubectl Missing"} />
+                    <StatusBadge healthy={data.kubernetes?.connected} label={data.kubernetes?.connected ? "Cluster Connected" : "Cluster Not Connected"} />
+                  </div>
+                  <ul className="meta-list">
+                    <li><b>Context:</b> {data.kubernetes?.context || "N/A"}</li>
+                    <li><b>Nodes Ready:</b> {data.kubernetes?.nodes?.ready ?? 0} / {data.kubernetes?.nodes?.count ?? 0}</li>
+                    <li><b>Pods Running:</b> {data.kubernetes?.pods?.running ?? 0} / {data.kubernetes?.pods?.count ?? 0}</li>
+                  </ul>
+                  <DataTable
+                    columns={[
+                      { key: "name", label: "Node" },
+                      { key: "ready_label", label: "Ready" },
+                      { key: "roles_label", label: "Roles" },
+                      { key: "kubelet_version", label: "Kubelet" },
+                    ]}
+                    rows={(data.kubernetes?.nodes?.items || []).map((node) => ({
+                      ...node,
+                      ready_label: node.ready ? "Yes" : "No",
+                      roles_label: (node.roles || []).join(", "),
+                    }))}
+                    emptyText="No Kubernetes node data available."
+                  />
+                </article>
+              </section>
+            </>
+          ) : null}
+        </>
+      ) : activeMenu === "sdwan-monitoring" ? (
+        <>
+          <section className="hero">
+            <div>
+              <h1><span className="k-brand">K</span> - SD-WAN Monitoring</h1>
+              <p>Link quality and WAN edge health using interface and latency telemetry.</p>
+            </div>
+            <div className="hero-actions">
+              <StatusBadge
+                healthy={(data?.network_interfaces?.summary?.total_drops ?? 0) === 0 && (data?.network_interfaces?.summary?.total_errors ?? 0) === 0}
+                label="WAN Fabric"
+              />
+              <button onClick={loadData} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
+            </div>
+          </section>
+
+          {data ? (
+            <>
+              <section className="panel two-col">
+                <article>
+                  <h2>WAN Summary</h2>
+                  <ul className="meta-list">
+                    <li><b>Internet:</b> {data.internet_connectivity.connected ? "Connected" : "Disconnected"}</li>
+                    <li><b>Interfaces Up:</b> {data.network_interfaces?.summary?.up ?? 0} / {data.network_interfaces?.count ?? 0}</li>
+                    <li><b>Total Errors:</b> {data.network_interfaces?.summary?.total_errors ?? 0}</li>
+                    <li><b>Total Drops:</b> {data.network_interfaces?.summary?.total_drops ?? 0}</li>
+                  </ul>
+                  <DataTable
+                    columns={[
+                      { key: "name", label: "Interface" },
+                      { key: "status", label: "Status" },
+                      { key: "speed", label: "Speed (Mbps)" },
+                      { key: "errors", label: "Errors In/Out" },
+                      { key: "drops", label: "Drops In/Out" },
+                    ]}
+                    rows={(data.network_interfaces?.items || []).map((item) => ({
+                      name: item.name,
+                      status: item.is_up ? "Up" : "Down",
+                      speed: item.speed_mbps,
+                      errors: `${item.errors_in}/${item.errors_out}`,
+                      drops: `${item.drops_in}/${item.drops_out}`,
+                    }))}
+                    emptyText="No interfaces found."
+                  />
+                </article>
+                <article>
+                  <h2>Live Throughput</h2>
+                  <div className="chart-block">
+                    <h4>Total Ingress (Mbps)</h4>
+                    <LineHistoryChart data={historyRx} color="#72c7ff" yMax={Math.max(100, ...historyRx.map((x) => x.value), 100)} unit=" Mbps" />
+                  </div>
+                  <div className="chart-block">
+                    <h4>Total Egress (Mbps)</h4>
+                    <LineHistoryChart data={historyTx} color="#f59dff" yMax={Math.max(100, ...historyTx.map((x) => x.value), 100)} unit=" Mbps" />
+                  </div>
+                </article>
+              </section>
+
+              <section className="latency-grid">
+                <LatencyResourceTable title="HTTP Path Latency" rows={data.resource_latency.http || []} />
+                <LatencyResourceTable title="HTTPS Path Latency" rows={data.resource_latency.https || []} />
+                <LatencyResourceTable title="ICMP Path Latency" rows={data.resource_latency.icmp || []} />
+              </section>
+            </>
+          ) : null}
+        </>
+      ) : activeMenu === "database-monitoring" ? (
+        <>
+          <section className="hero">
+            <div>
+              <h1><span className="k-brand">K</span> - Database Monitoring</h1>
+              <p>Database service uptime, memory pressure, and datastore capacity.</p>
+            </div>
+            <div className="hero-actions">
+              <StatusBadge healthy={databaseServices.every((svc) => svc.healthy)} label="DB Services" />
+              <button onClick={loadData} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
+            </div>
+          </section>
+
+          {data ? (
+            <>
+              <section className="panel two-col">
+                <article>
+                  <h2>Database Services ({databaseServices.length})</h2>
+                  <DataTable
+                    columns={[
+                      { key: "service", label: "Service" },
+                      { key: "unit", label: "Unit" },
+                      { key: "active", label: "Active" },
+                      { key: "sub", label: "Sub" },
+                      { key: "health", label: "Healthy" },
+                    ]}
+                    rows={databaseServices.map((item) => ({ ...item, health: item.healthy ? "Yes" : "No" }))}
+                    emptyText="No tracked database services found on this host."
+                  />
+                </article>
+                <article>
+                  <h2>Datastore Capacity</h2>
+                  <DataTable
+                    columns={[
+                      { key: "device", label: "Device" },
+                      { key: "mountpoint", label: "Mount" },
+                      { key: "fstype", label: "FS" },
+                      { key: "used_label", label: "Used / Total" },
+                      { key: "percent_label", label: "Usage %" },
+                      { key: "healthy_label", label: "Healthy" },
+                    ]}
+                    rows={(data.datastores?.items || []).map((item) => ({
+                      ...item,
+                      used_label: `${item.used_gb} GB / ${item.total_gb} GB`,
+                      percent_label: `${item.percent}%`,
+                      healthy_label: item.healthy ? "Yes" : "No",
+                    }))}
+                    emptyText="No datastore information available."
+                  />
+                </article>
+              </section>
+
+              <section className="panel">
+                <h2>Database Processes by Memory</h2>
+                <DataTable
+                  columns={[
+                    { key: "pid", label: "PID" },
+                    { key: "name", label: "Process" },
+                    { key: "username", label: "User" },
+                    { key: "memory_rss_gb", label: "Memory (GB)" },
+                    { key: "memory_percent", label: "Memory %" },
+                    { key: "cpu_percent", label: "CPU %" },
+                  ]}
+                  rows={databaseProcesses}
+                  emptyText="No database-like processes found in top memory list."
+                />
+              </section>
+            </>
+          ) : null}
+        </>
+      ) : activeMenu === "configuration-monitoring" ? (
+        <>
+          <section className="hero">
+            <div>
+              <h1><span className="k-brand">K</span> - Configuration Monitoring</h1>
+              <p>Platform configuration state, service posture, and control checks.</p>
+            </div>
+            <div className="hero-actions">
+              <StatusBadge healthy={(data?.alerting?.alerts || []).length === 0} label="Config Drift" />
+              <button onClick={loadData} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
+            </div>
+          </section>
+
+          {data ? (
+            <>
+              <section className="panel two-col">
+                <article>
+                  <h2>System Baseline</h2>
+                  <ul className="meta-list">
+                    <li><b>Hostname:</b> {data.system_info.hostname}</li>
+                    <li><b>OS:</b> {data.system_info.os}</li>
+                    <li><b>Kernel:</b> {data.system_info.kernel}</li>
+                    <li><b>Architecture:</b> {data.system_info.architecture}</li>
+                    <li><b>Python:</b> {data.system_info.python_version}</li>
+                    <li><b>Boot Time:</b> {formatDate(data.system_info.boot_time)}</li>
+                  </ul>
+                </article>
+                <article>
+                  <h2>Alerting Configuration</h2>
+                  <ul className="meta-list">
+                    <li><b>Email Enabled:</b> {data.alerting?.email_enabled ? "Yes" : "No"}</li>
+                    <li><b>Last Email Status:</b> {data.alerting?.email?.reason || "N/A"}</li>
+                    <li><b>Active Alerts:</b> {data.alerting?.count ?? 0}</li>
+                    <li><b>TLS Expiring Soon:</b> {data.tls_certificates?.summary?.expiring_soon ?? 0}</li>
+                    <li><b>TLS Expired:</b> {data.tls_certificates?.summary?.expired ?? 0}</li>
+                  </ul>
+                </article>
+              </section>
+
+              <section className="panel">
+                <h2>Service Configuration State</h2>
+                <DataTable
+                  columns={[
+                    { key: "service", label: "Service" },
+                    { key: "unit", label: "Unit" },
+                    { key: "active", label: "Active" },
+                    { key: "sub", label: "Sub" },
+                    { key: "health", label: "Healthy" },
+                  ]}
+                  rows={(data.services?.critical || []).map((item) => ({ ...item, health: item.healthy ? "Yes" : "No" }))}
+                  emptyText="No tracked critical services found on this host."
+                />
+              </section>
+
+              <section className="panel">
+                <h2>Kubernetes Context</h2>
+                <ul className="meta-list">
+                  <li><b>Context:</b> {data.kubernetes?.context || "N/A"}</li>
+                  <li><b>Message:</b> {data.kubernetes?.message || "N/A"}</li>
+                  <li><b>Nodes Ready:</b> {data.kubernetes?.nodes?.ready ?? 0} / {data.kubernetes?.nodes?.count ?? 0}</li>
+                  <li><b>Namespaces:</b> {data.kubernetes?.pods?.namespaces ?? 0}</li>
+                </ul>
+              </section>
+            </>
+          ) : null}
+        </>
+      ) : activeMenu === "storage-monitoring" ? (
+        <>
+          <section className="hero">
+            <div>
+              <h1><span className="k-brand">K</span> - Storage Monitoring</h1>
+              <p>Filesystem capacity, root disk utilization, and storage alert posture.</p>
+            </div>
+            <div className="hero-actions">
+              <StatusBadge healthy={storageAlerts.length === 0} label={storageAlerts.length ? "Attention Needed" : "Stable"} />
+              <button onClick={loadData} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
+            </div>
+          </section>
+
+          {data ? (
+            <>
+              <section className="grid-cards">
+                <div className="card-with-icon"><span className="card-icon"><HardDrive size={18} /></span><StatCard title="Root Disk" value={`${data.system_info.disk.percent}%`} subtitle={`${data.system_info.disk.used_gb} GB / ${data.system_info.disk.total_gb} GB`} healthy={data.system_info.disk.percent < thresholds.disk} /></div>
+                <div className="card-with-icon"><span className="card-icon"><Boxes size={18} /></span><StatCard title="Datastores" value={`${data.datastores?.summary?.count ?? 0}`} subtitle={`Critical ${data.datastores?.summary?.critical_usage ?? 0} • High ${data.datastores?.summary?.high_usage ?? 0}`} healthy={(data.datastores?.summary?.critical_usage ?? 0) === 0} /></div>
+              </section>
+
+              <section className="panel">
+                <h2>Datastore Capacity</h2>
+                <DataTable
+                  columns={[
+                    { key: "device", label: "Device" },
+                    { key: "mountpoint", label: "Mount" },
+                    { key: "fstype", label: "FS" },
+                    { key: "used_label", label: "Used / Total" },
+                    { key: "percent_label", label: "Usage %" },
+                    { key: "healthy_label", label: "Healthy" },
+                  ]}
+                  rows={(data.datastores?.items || []).map((item) => ({
+                    ...item,
+                    used_label: `${item.used_gb} GB / ${item.total_gb} GB`,
+                    percent_label: `${item.percent}%`,
+                    healthy_label: item.healthy ? "Yes" : "No",
+                  }))}
+                  emptyText="No datastore information available."
+                />
+              </section>
+
+              <section className="panel">
+                <h2>Storage Alerts</h2>
+                <div className="alert-list">
+                  {!storageAlerts.length ? (
+                    <p className="ok-note">No storage alerts detected.</p>
+                  ) : (
+                    storageAlerts.map((alert, idx) => (
+                      <p key={`storage-alert-${idx}`} className="warn-note">{alert}</p>
+                    ))
+                  )}
+                </div>
+              </section>
+            </>
+          ) : null}
         </>
       ) : (
         <section className="panel">
