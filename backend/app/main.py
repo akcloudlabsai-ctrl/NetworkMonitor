@@ -451,6 +451,7 @@ def _tls_certificates(targets: list[tuple[str, int]] | None = None) -> dict[str,
         start = time.perf_counter()
         try:
             context = ssl.create_default_context()
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
             with socket.create_connection((host, port), timeout=4.0) as sock:
                 with context.wrap_socket(sock, server_hostname=host) as secured:
                     cert = secured.getpeercert()
@@ -850,7 +851,7 @@ def _kubernetes_info() -> dict[str, Any]:
                 conditions = node.get("status", {}).get("conditions", [])
                 ready = any(c.get("type") == "Ready" and c.get("status") == "True" for c in conditions)
                 roles = [
-                    k.replace("node-role.kubernetes.io/", "")
+                    k[len("node-role.kubernetes.io/"):]
                     for k in (node.get("metadata", {}).get("labels", {}) or {}).keys()
                     if k.startswith("node-role.kubernetes.io/")
                 ]
