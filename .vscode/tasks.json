@@ -8,10 +8,11 @@
 			"args": [
 				"install",
 				"--no-audit",
-				"--no-fund",
-				"--prefix",
-				"/AI/networkMonitor/NetworkMonitor/frontend"
-			]
+				"--no-fund"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}/frontend"
+			}
 		},
 		{
 			"label": "Install Frontend Dependencies Update",
@@ -20,10 +21,11 @@
 			"args": [
 				"install",
 				"--no-audit",
-				"--no-fund",
-				"--prefix",
-				"/AI/networkMonitor/NetworkMonitor/frontend"
-			]
+				"--no-fund"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}/frontend"
+			}
 		},
 		{
 			"label": "Build Frontend",
@@ -31,10 +33,58 @@
 			"command": "npm",
 			"args": [
 				"run",
-				"build",
-				"--prefix",
-				"/AI/networkMonitor/NetworkMonitor/frontend"
-			]
+				"build"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}/frontend"
+			}
+		},
+		{
+			"label": "Start Backend",
+			"type": "shell",
+			"command": "uvicorn",
+			"args": [
+				"app.main:app",
+				"--reload",
+				"--host",
+				"0.0.0.0",
+				"--port",
+				"8000"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}/backend"
+			},
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Start Frontend Dev Server",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"dev"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}/frontend"
+			},
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Run Application (Docker)",
+			"type": "shell",
+			"command": "docker",
+			"args": [
+				"compose",
+				"up",
+				"--build"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"isBackground": true,
+			"problemMatcher": []
 		}
 	]
 }
